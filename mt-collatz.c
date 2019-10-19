@@ -50,8 +50,6 @@ int collatz(int n) {
 
 void* tCollatz(void* boundaries){ 
     bounds b = *((bounds*) boundaries);
-    int lower = b.lower;
-    int upper = b.upper;
     
     int i;
     for(i = b.lower; i < b.upper + 1; i++) {
@@ -95,9 +93,12 @@ int main(int argc, char** argv) {
     
     pthread_t tids[numThreads];
     bounds bArr[numThreads];
-
+    
+    //Get the range/size of each step
     int step = sequenceLimit / numThreads;
+    //The lower bound is always n = 2;
     int from = 2;
+    //The upper bound is the step + the lower bound - the base case
     int to = from + step - 2; 
     
     pthread_mutex_init(&lock, NULL);
@@ -117,7 +118,7 @@ int main(int argc, char** argv) {
     
     for(i = 0; i < numThreads; ++i) {
         printf("Waiting for thread %lu to join...\n", tids[i]);
-        pthread_join(tids[j], NULL);
+        pthread_join(tids[i], NULL);
         printf("Thread %lu joined successfully\n", tids[i]);
     }
 
