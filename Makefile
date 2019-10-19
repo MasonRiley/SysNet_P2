@@ -2,13 +2,11 @@ CC = g++
 
 TAGS = -Wall -g
 
-TARG = myshell
+TARG = mt-collatz
 
-SRC =  myshell.cpp\
-	   parse.cpp\
-	   param.cpp
+SRC =  mt-collatz.c
 
-LFLAGS = -pthread
+LFLAGS = -lpthread
 
 OBJ = $(SRC:.c=.o)
 
@@ -18,13 +16,13 @@ all: $(TARG)
 			@echo Compiling Success!
 
 $(TARG): $(OBJ)
-			$(CC) $(TAGS) -o $(TARG) $(OBJ)
+			$(CC) $(TAGS) -o $(TARG) $(OBJ) $(LFLAGS)
 						@echo Linking Success!
 
 .c.o:
-			$(CC) $(TAGS) -c $< -o $@ $(LFLAGS)
+			$(CC) $(TAGS) -c $< -o $@
 						@echo Compiling $<
 
 clean:
-			rm *.o
+			rm *.o mt-collatz
 					
