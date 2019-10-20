@@ -58,30 +58,37 @@ void *tCollatz(void *param){
      *the global variable COUNTER. This is for test purposes.  */
     if(NOLOCK_FLAG != 0) {
         while(COUNTER <= limit) { 
-            n = collatz(COUNTER);
+            stopTime = collatz(COUNTER);
             ++COUNTER;
-            histogram[n]++;
+            histogram[stopTime]++;
         }
     }
     //if -nolock flag is not set, go through with locking COUNTER
     else {
         while(COUNTER <= limit) {
-            //Lock access to global variable COUNTER to prevent race conditions
-            pthread_mutex_lock(&lock);
-            
-            //Calculate stopping time for a given N and increment COUNTER
-            stopTime = collatz(COUNTER);
-            ++COUNTER;
+            //Lock access to global variable COUNTER before incrementing
+            //pthread_mutex_lock(&lock);
 
-            //Unlock access to global variable COUNTER
+            /* Despite locking, COUNTER may get incremented beyond the limit *
+             * during while loop - check that this is not the case before    *
+             * calling collatz()                                             */
+            if(COUNTER <= limit) {
+               stopTime = collatz(COUNTER); //Calculate stopping time for N 
+               pthread_mutex_lock(&lock);
+               COUNTER++;
+               pthread_mutex_unlock(&lock);
+            }
+
+            //Unlock access to global variable COUNTER           
             pthread_mutex_unlock(&lock);
-            
+
             //Increment frequency of stopping time
             histogram[stopTime]++;
         }
     }
 
     pthread_exit(NULL);
+    return NULL;
 }
 
 //Prints the histogram in the format "k, frequency(k)" as specified by the project
@@ -146,7 +153,8 @@ int main(int argc, char** argv) {
     pthread_t tids[numThreads];
     
     //Initialize mutex lock
-    pthread_mutex_init(&lock, NULL);
+    if(pthread_mutex_init(&lock, NULL) != 0)
+        fprintf(stderr, "ERROR: Mutext initialization failed.\n");
 
     //Create all threads and run the Collatz algorithm
     for(i = 0; i < numThreads; i++) {
@@ -169,6 +177,7 @@ int main(int argc, char** argv) {
     fprintf(stderr, "%d,%d,%f\n", limit, numThreads, time);
 
     printHistogram();
+    return 0;
 }
 
 
