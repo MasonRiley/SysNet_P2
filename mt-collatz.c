@@ -1,9 +1,11 @@
 /**
- * This program is designed to compute a Collatz sequence by creating 
- * multiple threads
+ * This program is designed to compute a Collatz sequence up to a given limit using
+ * a given number of threads, both specified by the user. Prints out the limit, number 
+ * of threads, and run time to stderr, and a histogram of the resultant data to stdout.
  *
  * @author Mason Riley
  * @author Cesar Santiago
+ * @date 10/19/2019
  * @info Course COP4634
  */
 
@@ -11,58 +13,107 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <string.h>
 
 #define LIMIT 1
 #define NUM_THREADS 2
 #define MAX_LINES 1000
 
-int COUNTER = 2;
-int histogram[MAX_LINES];
-pthread_mutex_t lock;
-timespec start, stop;
+int COUNTER = 2; //tracks the counter for all threads
+int NOLOCK_FLAG = 0; //determines whether to use a lock or not
+int histogram[MAX_LINES] = {0}; //stores Collatz data, frequency of stopping time vs stopping time
+pthread_mutex_t lock; //used for locking
+timespec start, stop; //stores start and stop times for calculating run time
 
-void initHistogram() {
-    int i;
-    for(i = 0; i < MAX_LINES; i++)
-        histogram[i] = 0;
-}
-
+/**
+ *Computes the Collatz sequence for a given number n
+ *
+ *@param n The number for which to begin the Collatz sequence
+ *
+ *@return The stopping time
+ */
 int collatz(int n) {
-    int i = 0;
+    int stopTime = 0;
     while(n != 1) {
         if(n % 2 == 0)
             n = n / 2;
         else
             n = 3 * n + 1;
-        ++i;
+
+        ++stopTime;
     }
 
-    return i - 1;
+    return stopTime - 1;
 }
 
+/**
+ *Runs a series of Collatz sequences from 2 to N through threads
+ *
+ *@param param The N, or upper limit of sequences
+ */ 
 void *tCollatz(void *param){
-    int n, limit = *(int *)param;
-
-    while(COUNTER <= limit) {
-        pthread_mutex_lock(&lock);
-        n = collatz(COUNTER);
-        ++COUNTER;
-        pthread_mutex_unlock(&lock);
-        histogram[n]++;
-    }
-    return NULL;
-}
-
-void printHistogram() {
-    int i, j;
-    for(i = 0; i < MAX_LINES; i++) {
-        if(histogram[i] > 0) { 
-            printf("%d:", i + 1);
-            for(j = 0; j < histogram[i]; j++)
-                printf("*");
-            printf("\n");
+    int stopTime, limit = *(int *)param;
+    
+    /*if -nolock flag is set at runtime, do not lock access to *
+     *the global variable COUNTER. This is for test purposes.  */
+    if(NOLOCK_FLAG != 0) {
+        while(COUNTER <= limit) { 
+            n = collatz(COUNTER);
+            ++COUNTER;
+            histogram[n]++;
         }
     }
+    //if -nolock flag is not set, go through with locking COUNTER
+    else {
+        while(COUNTER <= limit) {
+            //Lock access to global variable COUNTER to prevent race conditions
+            pthread_mutex_lock(&lock);
+            
+            //Calculate stopping time for a given N and increment COUNTER
+            stopTime = collatz(COUNTER);
+            ++COUNTER;
+
+            //Unlock access to global variable COUNTER
+            pthread_mutex_unlock(&lock);
+            
+            //Increment frequency of stopping time
+            histogram[stopTime]++;
+        }
+    }
+
+    pthread_exit(NULL);
+}
+
+//Prints the histogram in the format "k, frequency(k)" as specified by the project
+void printHistogram() {
+    int i;
+    for(i = 0; i < MAX_LINES; i++) 
+        printf("%d, %d\n", i + 1, histogram[i]); 
+}
+
+/**
+ *Checks for the -nolock flag, and if found sets NOLOCK_FLAG to 1 (nonzero)
+ *
+ *@param numArgs The number of command line arguments given
+ *@param args A string array containing each individual argument
+ */ 
+void checkNoLock(int numArgs, char* args[]) {
+    for(int i = 0; i < numArgs; i++) {
+        if(strcmp(args[i], "-nolock") == 0) 
+            NOLOCK_FLAG = 1;
+    }
+}
+
+/**
+ *Calculates the run time of the program
+ *
+ *@return The total run time of the program
+ */ 
+float calcRunTime() {
+    float sec = stop.tv_sec - start.tv_sec;
+    float nsec = (stop.tv_nsec - start.tv_nsec) / 1000000000.0;
+    float time = sec + nsec;
+    return time;   
 }
 
 /*Runs the program
@@ -71,38 +122,52 @@ void printHistogram() {
  *@param argv an array of arguments as strings
  */
 int main(int argc, char** argv) { 
+    int i;
+    
+    //Get start time
     clock_gettime(CLOCK_MONOTONIC_RAW, &start);
-    int i = 0;
 
     //Check for the correct number of arguments
-    if(argc > 3 || argc < 3) {
+    if(argc < 3) {
         printf("Invalid number of arguments, please rerun the program in the form:\n");
         printf("./mt-collatz [upper bound] [number of threads]\n");
         return 0;
     }
 
-    initHistogram();
-        
+    //Check for the -nolock flag
+    checkNoLock(argc, argv);
+    
+    //Get sequence upper limit from argv[1] 
     int limit = atoi(argv[LIMIT]);
+    //Get number of threads from argv[2]
     int numThreads = atoi(argv[NUM_THREADS]);
     
+    //Stores the tids of the threads 
     pthread_t tids[numThreads];
     
+    //Initialize mutex lock
     pthread_mutex_init(&lock, NULL);
+
+    //Create all threads and run the Collatz algorithm
     for(i = 0; i < numThreads; i++) {
         if(pthread_create(&tids[i], NULL, tCollatz, (void *) &limit))
-            printf("ERROR: Thread failed to create\n");
+            fprintf(stderr, "ERROR: Thread failed to create\n");
     }
     
-    for(i = 0; i < numThreads; ++i) {
-        printf("Waiting for thread %lu to join...\n", tids[i]);
+    //Join all threads 
+    for(i = 0; i < numThreads; i++) 
         pthread_join(tids[i], NULL);
-        printf("Thread %lu joined successfully\n", tids[i]);
-    }
-
+    
+    //Destroy mutex lock
     pthread_mutex_destroy(&lock);
+
+    //Get stop time
     clock_gettime(CLOCK_MONOTONIC_RAW, &stop);
-    printf("Total time = %f seconds\n", (stop.tv_nsec - start.tv_nsec) / 1000000000.0 + (stop.tv_sec - start.tv_sec));
+    //Calculate run time
+    float time = calcRunTime();
+    //Print out N,T,run time to stderr
+    fprintf(stderr, "%d,%d,%f\n", limit, numThreads, time);
+
     printHistogram();
 }
 
