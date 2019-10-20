@@ -19,7 +19,7 @@
 #define NUM_THREADS 2
 #define MAX_LINES 1000
 
-int COUNTER = 2; //tracks the counter for all threads
+int COUNTER = 1; //tracks the counter for all threads
 int NOLOCK_FLAG = 0; //determines whether to use a lock or not
 int histogram[MAX_LINES] = {0}; //stores Collatz data, frequency of stopping time vs stopping time
 pthread_mutex_t lock; //used for locking
@@ -32,7 +32,7 @@ timespec start, stop; //stores start and stop times for calculating run time
  *
  *@return The stopping time
  */
-int collatz(int n) {
+void collatz(int n) {
     int stopTime = 0;
     while(n != 1) {
         if(n % 2 == 0)
@@ -43,7 +43,7 @@ int collatz(int n) {
         ++stopTime;
     }
 
-    return stopTime - 1;
+    histogram[stopTime - 1]++;
 }
 
 /**
@@ -52,38 +52,30 @@ int collatz(int n) {
  *@param param The N, or upper limit of sequences
  */ 
 void *tCollatz(void *param){
-    int stopTime, limit = *(int *)param;
+    int stopTime, n, limit = *(int *)param;
     
     /*if -nolock flag is set at runtime, do not lock access to *
      *the global variable COUNTER. This is for test purposes.  */
     if(NOLOCK_FLAG != 0) {
-        while(COUNTER <= limit) { 
-            stopTime = collatz(COUNTER);
-            ++COUNTER;
-            histogram[stopTime]++;
-        }
+        while(COUNTER < limit)  
+            collatz(++COUNTER);
     }
     //if -nolock flag is not set, go through with locking COUNTER
     else {
-        while(COUNTER <= limit) {
-            //Lock access to global variable COUNTER before incrementing
-            //pthread_mutex_lock(&lock);
+        while(COUNTER < limit) {
 
             /* Despite locking, COUNTER may get incremented beyond the limit *
              * during while loop - check that this is not the case before    *
              * calling collatz()                                             */
-            if(COUNTER <= limit) {
-               stopTime = collatz(COUNTER); //Calculate stopping time for N 
+            if(COUNTER < limit) {
+               //Lock access to global variable COUNTER before incrementing
                pthread_mutex_lock(&lock);
-               COUNTER++;
+               ++COUNTER;
+               n = COUNTER;
                pthread_mutex_unlock(&lock);
+               
+               collatz(n); //Calculate stopping time for N 
             }
-
-            //Unlock access to global variable COUNTER           
-            pthread_mutex_unlock(&lock);
-
-            //Increment frequency of stopping time
-            histogram[stopTime]++;
         }
     }
 
