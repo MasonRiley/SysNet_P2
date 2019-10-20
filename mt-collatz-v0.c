@@ -12,11 +12,15 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define LIMIT 1
+#define SEQUENCE_LIMIT 1
 #define NUM_THREADS 2
 #define MAX_LINES 1000
 
-int COUNTER = 2;
+typedef struct bounds {
+    int lower;
+    int upper;
+} bounds;
+
 int histogram[MAX_LINES];
 pthread_mutex_t lock;
 timespec start, stop;
@@ -28,28 +32,27 @@ void initHistogram() {
 }
 
 int collatz(int n) {
-    int i = 0;
+    int counter = 0;
     while(n != 1) {
         if(n % 2 == 0)
             n = n / 2;
         else
             n = 3 * n + 1;
-        ++i;
+        ++counter;
     }
 
-    return i - 1;
+    return counter - 1;
 }
 
-void *tCollatz(void *param){
-    int n, limit = *(int *)param;
-
-    while(COUNTER <= limit) {
-        pthread_mutex_lock(&lock);
-        n = collatz(COUNTER);
-        ++COUNTER;
+void* tCollatz(void* boundaries){ 
+    bounds b = *((bounds*) boundaries);
+    
+    int i;
+    for(i = b.lower; i < b.upper + 1; i++) {
+        pthread_mutex_lock(&lock); 
+        histogram[collatz(i)]++;
         pthread_mutex_unlock(&lock);
-        histogram[n]++;
-    }
+    } 
     return NULL;
 }
 
@@ -83,15 +86,32 @@ int main(int argc, char** argv) {
 
     initHistogram();
         
-    int limit = atoi(argv[LIMIT]);
+    int sequenceLimit = atoi(argv[SEQUENCE_LIMIT]);
     int numThreads = atoi(argv[NUM_THREADS]);
     
     pthread_t tids[numThreads];
+    bounds bArr[numThreads];
+    
+    //Get the range/size of each step
+    int step = sequenceLimit / numThreads;
+    //The lower bound is always n = 2;
+    int from = 2;
+    //The upper bound is the step + the lower bound - the base case
+    int to = from + step - 2; 
     
     pthread_mutex_init(&lock, NULL);
     for(i = 0; i < numThreads; i++) {
-        if(pthread_create(&tids[i], NULL, tCollatz, (void *) &limit))
+        bArr[i].lower = from;
+        if(i != numThreads - 1)
+            bArr[i].upper = to;
+        else
+            bArr[i].upper = sequenceLimit; 
+        
+        if(pthread_create(&tids[i], NULL, tCollatz, (void *) &bArr[i]))
             printf("ERROR: Thread failed to create\n");
+
+        from = to + 1;
+        to = from + step - 1;
     }
     
     for(i = 0; i < numThreads; ++i) {
